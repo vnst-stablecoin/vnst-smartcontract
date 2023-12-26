@@ -4,10 +4,12 @@ import "dotenv/config"
 async function main() {
     const VNST = await hre.ethers.getContractFactory("VNSTProtocol")
     console.log("Upgrading VNST ...")
-    const vnst = await hre.upgrades.upgradeProxy(process.env.PROXYTESTNETADDRESS as string, VNST)
+    const vnst = await hre.upgrades.upgradeProxy(process.env.PROXYTESTNETADDRESS as string, VNST, {
+        txOverrides: { gasLimit: 0x1000000 },
+    })
     console.log("VNST deployed to:", vnst.target)
-    console.log("Adding mod for CMS ...")
-    await vnst.addMod(process.env.TESTNETMOD)
+    // console.log("Adding mod for CMS ...")
+    // await vnst.addMod(process.env.TESTNETMOD)
 }
 
 main().catch((error) => {
