@@ -4,7 +4,15 @@ pragma solidity ^0.8.9;
 import "./vnst.proxy.sol";
 
 contract VNSTProtocol is VNSTProxy {
+    using EnumerableSet for EnumerableSet.AddressSet;
+
     uint256 public max_redeem_limit;
+    EnumerableSet.AddressSet private verifiedUsers;
+    uint256 public max_mint_limit_verified_user;
+    uint256 public max_redeem_limit_verified_user;
+    uint256 public mint_fee;
+    bool public mint_status; 
+    bool public redeem_status; 
 
     function version() external pure returns (string memory) {
         return "v1!";
@@ -136,17 +144,75 @@ contract VNSTProtocol is VNSTProxy {
         market_price = (vnst_pool * _rate_decimal) / usdt_pool;
     }
 
+    function vnst73657420666566(uint256 _mint_fee) external {
+        require(hasRole(MODERATOR_ROLE, msg.sender), "caller_lacks_necessary_permission");
+        mint_fee = _mint_fee;
+    }
+
+    function setMaxLimitVerifiedUser(uint256 _max_mint_limit, uint256 _max_redeem_limit) external {
+        require(hasRole(MODERATOR_ROLE, msg.sender), "caller_lacks_necessary_permission");
+        max_mint_limit_verified_user = _max_mint_limit;
+        max_redeem_limit_verified_user = _max_redeem_limit;
+    }
+
+    function isVerified(address _user) public view returns (bool) {
+        return verifiedUsers.contains(_user);
+    }
+
+    function addVerifiedUsers(address[] calldata _users) external {
+        require(hasRole(MODERATOR_ROLE, msg.sender), "caller_lacks_necessary_permission");
+        for (uint8 i = 0; i < _users.length; i++) {
+            verifiedUsers.add(_users[i]);
+        }
+    }
+
+    function removeVerifiedUsers(address[] calldata _users) external {
+        require(hasRole(MODERATOR_ROLE, msg.sender), "caller_lacks_necessary_permission");
+        for (uint8 i = 0; i < _users.length; i++) {
+            verifiedUsers.remove(_users[i]);
+        }
+    }
+    
+    function getAllVerifiedUsers() external view returns (address[] memory) {
+        uint256 _count = verifiedUsers.length();
+        address[] memory users = new address[](_count);
+        for (uint256 i = 0; i < _count; i++) {
+            users[i] = verifiedUsers.at(i);
+        }
+        return users;
+    }
+
+    function vnst191671e7f585a3817f(bool _mint_status) external {
+        require(hasRole(MODERATOR_ROLE, msg.sender), "caller_lacks_necessary_permission");
+        mint_status = _mint_status;
+    }
+
+    function vnst5630dd9d602fe45ab7(bool _redeem_status) external {
+        require(hasRole(MODERATOR_ROLE, msg.sender), "caller_lacks_necessary_permission");
+        redeem_status = _redeem_status;
+    }
+
     /// @param _amount_usdt Q-in: Input amount
-    function mint(uint256 _amount_usdt) external nonReentrant whenNotPaused {
+     function mint(uint256 _amount_usdt) external nonReentrant whenNotPaused {
+        require(mint_status, "caller_lacks_necessary_permission");
+        uint256 _max_limit;
+
+        if (isVerified(msg.sender)) {
+            _max_limit = max_mint_limit_verified_user;
+        } else {
+            _max_limit = max_mint_limit;
+        }
         require(market_price >= mint_covered_price, "market_price_below_covered_mint_price");
         // Check balance usdt caller
         require(usdt.balanceOf(address(msg.sender)) >= _amount_usdt, "usdt_insufficient");
         require(_amount_usdt >= min_mint_limit, "min_usdt_amount");
-        require(_amount_usdt <= max_mint_limit, "max_usdt_amount");
+        require(_amount_usdt <= _max_limit, "max_usdt_amount");
 
+        uint256 _amount_usdt_mint = _amount_usdt - _amount_usdt * mint_fee / _rate_decimal;
+        operation_pool = operation_pool + (_amount_usdt - _amount_usdt_mint);
         // Case VMM not available
         if (market_price == mint_covered_price) {
-            uint256 amount_vnst_support_out = _getAmountVNSTSupport(_amount_usdt);
+            uint256 amount_vnst_support_out = _getAmountVNSTSupport(_amount_usdt_mint);
 
             // Check cover pool
             require(mint_covered_amount > amount_vnst_support_out, "out_of_covered_mint_amount");
@@ -169,11 +235,11 @@ contract VNSTProtocol is VNSTProxy {
             uint256 amount_usdt_in_before_support = _getUSDTInBeforeCovered();
 
             // Case mint don't hit cover price
-            if (_amount_usdt <= amount_usdt_in_before_support) {
-                uint256 amount_vnst_out = _calculateVMM(usdt_pool, vnst_pool, _amount_usdt);
+            if (_amount_usdt_mint <= amount_usdt_in_before_support) {
+                uint256 amount_vnst_out = _calculateVMM(usdt_pool, vnst_pool, _amount_usdt_mint);
 
                 // update pool
-                _updatePool(vnst_pool - amount_vnst_out, usdt_pool + _amount_usdt);
+                _updatePool(vnst_pool - amount_vnst_out, usdt_pool + _amount_usdt_mint);
 
                 // transfer usdt from caller to pool
                 usdt.transferFrom(_msgSender(), address(this), _amount_usdt);
@@ -185,10 +251,10 @@ contract VNSTProtocol is VNSTProxy {
                 emit EMint(_msgSender(), _amount_usdt, amount_vnst_out, block.timestamp, market_price);
             }
             // Case mint hit cover price
-            else if (_amount_usdt > amount_usdt_in_before_support) {
+            else if (_amount_usdt_mint > amount_usdt_in_before_support) {
                 uint256 amount_vnst_out = _calculateVMM(usdt_pool, vnst_pool, amount_usdt_in_before_support);
 
-                uint256 amount_vnst_support_out = _getAmountVNSTSupport(_amount_usdt - amount_usdt_in_before_support);
+                uint256 amount_vnst_support_out = _getAmountVNSTSupport(_amount_usdt_mint - amount_usdt_in_before_support);
 
                 // Check cover pool
                 require(mint_covered_amount > amount_vnst_support_out, "out_of_covered_mint_amount");
@@ -218,11 +284,19 @@ contract VNSTProtocol is VNSTProxy {
 
     /// @param _amount_vnst Q-in: Input amount
     function redeem(uint256 _amount_vnst) external nonReentrant whenNotPaused {
+        require(redeem_status, "caller_lacks_necessary_permission");
+        uint256 _max_limit;
+
+        if (isVerified(msg.sender)) {
+            _max_limit = max_redeem_limit_verified_user;
+        } else {
+            _max_limit = max_redeem_limit;
+        }
         require(market_price <= redeem_covered_price, "market_price_above_covered_redeem_price");
         // check balance vnst caller
         require(balanceOf(_msgSender()) >= _amount_vnst, "vnst_insufficient");
         require(_amount_vnst >= min_redeem_limit, "min_vnst_amount");
-        require(_amount_vnst <= max_redeem_limit, "max_vnst_amount");
+        require(_amount_vnst <= _max_limit, "max_vnst_amount");
 
         // Case VMM not available
         if (market_price == redeem_covered_price) {

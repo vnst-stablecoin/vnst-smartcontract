@@ -12,6 +12,8 @@ async function main() {
     const vnstProxy = await hre.upgrades.deployProxy(VNSTProxy, [usdt.target], {
         kind: "uups",
     })
+    await vnstProxy.waitForDeployment();
+
 
     const VNST_PROXY_ADDRESS = await vnstProxy.getAddress()
     console.log("VNST Proxy deployed to:", VNST_PROXY_ADDRESS)

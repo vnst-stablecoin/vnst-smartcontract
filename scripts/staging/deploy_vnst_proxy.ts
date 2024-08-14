@@ -7,11 +7,14 @@ async function main() {
 
     const vnstProxy = await hre.upgrades.deployProxy(VNSTProxy, [process.env.USDTTESTNETADDRESS], {
         kind: "uups",
-        txOverrides: { gasLimit: 0x1000000 },
     })
+
+    await vnstProxy.waitForDeployment();
+
 
     const VNST_PROXY_ADDRESS = await vnstProxy.getAddress()
     console.log("VNST Proxy deployed to:", VNST_PROXY_ADDRESS)
+
 }
 
 main().catch((error) => {

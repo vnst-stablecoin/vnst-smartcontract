@@ -17,15 +17,6 @@ const config: HardhatUserConfig = {
                 process.env.MAINNETKEY as string, // developer
             ],
         },
-        // for testnet
-        "tomo-testnet": {
-            url: "https://rpc-testnet.viction.xyz",
-            accounts: [process.env.TESTNETKEY as string],
-        },
-        "viction-testnet": {
-            url: "https://rpc-testnet.viction.xyz",
-            accounts: [process.env.TESTNETKEY as string],
-        },
     },
     etherscan: {
         apiKey: {
@@ -44,15 +35,15 @@ const config: HardhatUserConfig = {
                     },
                 },
             },
-            // {
-            //     version: "0.8.12",
-            //     settings: {
-            //         optimizer: {
-            //             enabled: true,
-            //             runs: 200,
-            //         },
-            //     },
-            // },
+            {
+                version: "0.8.12",
+                settings: {
+                    optimizer: {
+                        enabled: true,
+                        runs: 200,
+                    },
+                },
+            },
         ],
     },
     mocha: {
