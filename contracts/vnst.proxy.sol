@@ -23,13 +23,13 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 /// @author Nami Innovation
 /// @notice VNST Stable Coin and VMM
 contract VNSTProxy is
-    Initializable,
-    ERC20Upgradeable,
-    ERC20PausableUpgradeable,
-    UUPSUpgradeable,
-    AccessControlEnumerableUpgradeable,
-    OwnableUpgradeable,
-    ReentrancyGuardUpgradeable
+Initializable,
+ERC20Upgradeable,
+ERC20PausableUpgradeable,
+UUPSUpgradeable,
+AccessControlEnumerableUpgradeable,
+OwnableUpgradeable,
+ReentrancyGuardUpgradeable
 {
     using SafeMath for uint256;
     using SafeERC20Upgradeable for IERC20Upgradeable;
@@ -62,6 +62,10 @@ contract VNSTProxy is
 
     uint256 internal constant _rate_decimal = 1000000;
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
     /// @param address_usdt address of usdt stable coin
     function initialize(address address_usdt) public initializer {
         _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());

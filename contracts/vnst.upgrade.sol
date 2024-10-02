@@ -11,8 +11,10 @@ contract VNSTProtocol is VNSTProxy {
     uint256 public max_mint_limit_verified_user;
     uint256 public max_redeem_limit_verified_user;
     uint256 public mint_fee;
-    bool public mint_status; 
-    bool public redeem_status; 
+    bool public mint_status;
+    bool public redeem_status;
+    uint256 max_fee_by_percent;
+    uint256 max_uint;
 
     function version() external pure returns (string memory) {
         return "v1!";
@@ -38,35 +40,32 @@ contract VNSTProtocol is VNSTProxy {
 
     event EOperationPool(address indexed address_withdraw, uint256 amount, uint256 created_at);
 
+    function initializeData() public onlyOwner {
+        max_fee_by_percent = 100000;
+        max_uint = type(uint256).max;
+    }
+
     function emergencyWithdraw() external nonReentrant onlyOwner {
         uint256 _amount = usdt.balanceOf(address(this));
 
         operation_pool = 0;
 
-        // needs to execute `approve()` on the token contract to allow itself the transfer
-        usdt.approve(address(this), _amount);
-
-        usdt.transferFrom(address(this), owner(), _amount);
+        usdt.transfer(owner(), _amount);
     }
 
     function withdrawUSDT(uint256 _amount) external nonReentrant onlyOwner {
         require(_amount > 0, "Need more than 0");
         require(usdt.balanceOf(address(this)) - operation_pool >= _amount, "usdt_insufficient");
 
-        // needs to execute `approve()` on the token contract to allow itself the transfer
-        usdt.approve(address(this), _amount);
-
-        usdt.transferFrom(address(this), owner(), _amount);
+        usdt.transfer(owner(), _amount);
     }
 
     function withdrawOperationPool() external nonReentrant onlyOwner {
         uint256 _operation_pool = operation_pool;
 
         operation_pool = 0;
-        // needs to execute `approve()` on the token contract to allow itself the transfer
-        usdt.approve(address(this), _operation_pool);
 
-        usdt.transferFrom(address(this), owner(), _operation_pool);
+        usdt.transfer(owner(), _operation_pool);
 
         emit EOperationPool(_msgSender(), _operation_pool, block.timestamp);
     }
@@ -102,6 +101,7 @@ contract VNSTProtocol is VNSTProxy {
 
     function vnst73657420666565(uint256 _redeem_fee) external {
         require(hasRole(MODERATOR_ROLE, msg.sender), "caller_lacks_necessary_permission");
+        require(_redeem_fee < max_fee_by_percent, "exceed_the_limit");
         redeem_fee = _redeem_fee;
     }
 
@@ -146,6 +146,7 @@ contract VNSTProtocol is VNSTProxy {
 
     function vnst73657420666566(uint256 _mint_fee) external {
         require(hasRole(MODERATOR_ROLE, msg.sender), "caller_lacks_necessary_permission");
+        require(_mint_fee < max_fee_by_percent, "exceed_the_limit");
         mint_fee = _mint_fee;
     }
 
@@ -172,7 +173,7 @@ contract VNSTProtocol is VNSTProxy {
             verifiedUsers.remove(_users[i]);
         }
     }
-    
+
     function getAllVerifiedUsers() external view returns (address[] memory) {
         uint256 _count = verifiedUsers.length();
         address[] memory users = new address[](_count);
@@ -193,7 +194,7 @@ contract VNSTProtocol is VNSTProxy {
     }
 
     /// @param _amount_usdt Q-in: Input amount
-     function mint(uint256 _amount_usdt) external nonReentrant whenNotPaused {
+    function mint(uint256 _amount_usdt) external nonReentrant whenNotPaused {
         require(mint_status, "caller_lacks_necessary_permission");
         uint256 _max_limit;
 
@@ -224,13 +225,15 @@ contract VNSTProtocol is VNSTProxy {
             // transfer usdt from caller to pool
             usdt.transferFrom(_msgSender(), address(this), _amount_usdt);
 
+
             // mint token and transfer to caller
+            require(totalSupply() + amount_vnst_support_out <= max_uint, "storage_limit_exceeded");
             _mint(_msgSender(), amount_vnst_support_out);
 
             //Event
             emit EMint(_msgSender(), _amount_usdt, amount_vnst_support_out, block.timestamp, market_price);
         }
-        // Case VMM available
+            // Case VMM available
         else if (market_price > mint_covered_price) {
             uint256 amount_usdt_in_before_support = _getUSDTInBeforeCovered();
 
@@ -245,12 +248,13 @@ contract VNSTProtocol is VNSTProxy {
                 usdt.transferFrom(_msgSender(), address(this), _amount_usdt);
 
                 // mint token and transfer to caller
+                require(totalSupply() + amount_vnst_out <= max_uint, "storage_limit_exceeded");
                 _mint(_msgSender(), amount_vnst_out);
 
                 // Event
                 emit EMint(_msgSender(), _amount_usdt, amount_vnst_out, block.timestamp, market_price);
             }
-            // Case mint hit cover price
+                // Case mint hit cover price
             else if (_amount_usdt_mint > amount_usdt_in_before_support) {
                 uint256 amount_vnst_out = _calculateVMM(usdt_pool, vnst_pool, amount_usdt_in_before_support);
 
@@ -266,9 +270,10 @@ contract VNSTProtocol is VNSTProxy {
 
                 // transfer usdt from caller to pool
                 usdt.transferFrom(_msgSender(), address(this), _amount_usdt);
-
                 // mint token and transfer to caller
-                _mint(_msgSender(), amount_vnst_out + amount_vnst_support_out);
+                uint256 total_vnst_out = amount_vnst_out + amount_vnst_support_out;
+                require(totalSupply() + total_vnst_out <= max_uint, "storage_limit_exceeded");
+                _mint(_msgSender(), total_vnst_out);
 
                 // Event
                 emit EMint(
@@ -327,7 +332,7 @@ contract VNSTProtocol is VNSTProxy {
                 market_price
             );
         }
-        // Case VMM available
+            // Case VMM available
         else if (market_price < redeem_covered_price) {
             uint256 amount_vnst_in_before_support = _getVNSTInBeforeCovered();
 
@@ -356,7 +361,7 @@ contract VNSTProtocol is VNSTProxy {
                     market_price
                 );
             }
-            // Case redeem hit cover price
+                // Case redeem hit cover price
             else if (_amount_vnst > amount_vnst_in_before_support) {
                 uint256 amount_usdt_out = _calculateVMM(vnst_pool, usdt_pool, amount_vnst_in_before_support);
 
